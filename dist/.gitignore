@@ -1,4 +1,4 @@
 *
 !.gitignore
 !.npmignore
-!qb-record.browserify.min.js
+!qb-report.browserify.min.js
