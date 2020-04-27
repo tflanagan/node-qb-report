@@ -1,0 +1,73 @@
+{
+  "name": "qb-report",
+  "private": false,
+  "version": "1.0.0-alpha.0",
+  "description": "A lightweight abstraction layer for Quick Base",
+  "keywords": [
+    "QuickBase",
+    "quickbase",
+    "Quick Base",
+    "quick base",
+    "qb",
+    "api",
+    "QBReport",
+    "qbreport",
+    "qb-report"
+  ],
+  "homepage": "https://github.com/tflanagan/node-qb-report",
+  "bugs": {
+    "url": "https://github.com/tflanagan/node-qb-report/issues",
+    "email": "contact@tristianflanagan.com"
+  },
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Tristian Flanagan",
+    "url": "https://github.com/tflanagan",
+    "email": "contact@tristianflanagan.com"
+  },
+  "maintainers": [
+    {
+      "name": "Tristian Flanagan",
+      "url": "https://github.com/tflanagan",
+      "email": "contact@tristianflanagan.com"
+    }
+  ],
+  "contributors": [
+    "Tristian Flanagan <contact@tristianflanagan.com> (https://github.com/tflanagan)"
+  ],
+  "main": "./dist/qb-report.js",
+  "types": "./dist/qb-report.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:tflanagan/node-qb-report.git"
+  },
+  "scripts": {
+    "cleanup": "rm -rf ./dist/*",
+    "reinstall": "rm -rf node_modules/ && npm install",
+    "reinstall-dev": "rm -rf node_modules/ && npm install && npm install --dev",
+    "build": "node build.js",
+    "docs": "mv ./docs/_config.yml ./ && npx typedoc src/qb-report.ts && mv ./_config.yml ./docs/",
+    "test": "npx ava"
+  },
+  "dependencies": {
+    "deepmerge": "^4.2.2",
+    "qb-field": "1.0.0-alpha.1",
+    "qb-record": "3.0.0-alpha.1",
+    "quickbase": "3.0.0-alpha.13"
+  },
+  "devDependencies": {
+    "@ava/typescript": "^1.1.1",
+    "@types/node": "^13.13.2",
+    "ava": "^3.7.1",
+    "browserify": "^16.5.1",
+    "dotenv": "^8.2.0",
+    "minify": "^5.1.1",
+    "ts-node": "^8.9.1",
+    "typedoc": "^0.17.4",
+    "typescript": "^3.8.3"
+  },
+  "engines": {
+    "node": ">=10.14.2"
+  },
+  "git": "git@github.com:tflanagan/node-qb-report.git"
+}
