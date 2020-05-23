@@ -6,7 +6,10 @@ import {
 	QuickBase,
 	QuickBaseOptions,
 	QuickBaseResponseRunQuery,
-	QuickBaseResponseField
+	QuickBaseResponseField,
+	reportType,
+	QuickBaseGroupBy,
+	QuickBaseSortBy
 } from 'quickbase';
 import { QBField } from 'qb-field';
 import { QBRecord } from 'qb-record';
@@ -30,16 +33,16 @@ export class QBReport {
 		quickbase: {
 			realm: IS_BROWSER ? window.location.host.split('.')[0] : ''
 		},
-	
+
 		dbid: (() => {
 			if(IS_BROWSER){
 				const dbid = window.location.pathname.match(/^\/db\/(?!main)(.*)$/);
-	
+
 				if(dbid){
 					return dbid[1];
 				}
 			}
-	
+
 			return '';
 		})(),
 		fids: {},
@@ -81,7 +84,7 @@ export class QBReport {
 			return null;
 		}
 
-		return this._data[field];
+		return (this._data as Indexable)[field];
 	}
 
 	getDBID(): string {
@@ -205,7 +208,7 @@ export class QBReport {
 				this._fields.push(result);
 			}
 
-			Object.keys(field).forEach((attribute) => {
+			getObjectKeys(field).forEach((attribute) => {
 				result!.set(attribute, (field as Indexable)[attribute]);
 			});
 		});
@@ -230,7 +233,7 @@ export class QBReport {
 
 			//@ts-ignore
 			qbRecord._fields = fields;
-			
+
 			fields.forEach((field) => {
 				const fid = field.getFid();
 				const name = this.getFid(fid, true);
@@ -285,8 +288,29 @@ export class QBReport {
 				this._fields.push(result);
 			}
 
-			Object.keys(field).forEach((attribute) => {
-				result!.set(attribute, (field as Indexable)[attribute]);
+			getObjectKeys(field).forEach((attribute) => {
+				let value = (field as Indexable)[attribute];
+
+				if(attribute === 'formula'){
+					// @ts-ignore
+					attribute = 'properties';
+
+					value = {
+						formula: value,
+						...(result!.get('properties') || {})
+					};
+				}else
+				if(attribute === 'decimalPrecision'){
+					// @ts-ignore
+					attribute = 'properties';
+
+					value = {
+						decimalPrecision: value,
+						...(result!.get('properties') || {})
+					};
+				}
+
+				result!.set(attribute as keyof QuickBaseResponseField, value);
 			});
 		});
 
@@ -348,6 +372,11 @@ export class QBReport {
 
 }
 
+/* Helpers */
+function getObjectKeys<O>(obj: O): (keyof O)[] {
+    return Object.keys(obj) as (keyof O)[];
+}
+
 /* Interfaces */
 interface Indexable {
 	[index: string]: any;
@@ -365,25 +394,19 @@ export interface QBReportLoad {
 	top?: number;
 }
 
-type QBReportResponse = QuickBaseResponseRunQuery['metadata'] & {
+export type QBReportResponse = QuickBaseResponseRunQuery['metadata'] & {
 	records: QBRecord[];
 	fields: QBField[];
 };
 
 export interface QBReportData {
-	type?: string;
+	type?: reportType;
 	description?: string;
 	name?: string;
 	filter?: string;
 	formulaFields?: QuickBaseResponseField[];
-	groupBy?: {
-		fieldId: number,
-		grouping: string;
-	}[];
-	sortBy?: {
-		fieldId: number,
-		order: string;
-	}[];
+	groupBy?: QuickBaseGroupBy[];
+	sortBy?: QuickBaseSortBy[];
 }
 
 export type QBReportFids = {
