@@ -209,7 +209,7 @@ export class QBReport {
 			}
 
 			getObjectKeys(field).forEach((attribute) => {
-				result!.set(attribute, (field as Indexable)[attribute]);
+				result!.set(attribute === 'name' ? 'label' : attribute, (field as Indexable)[attribute]);
 			});
 		});
 
