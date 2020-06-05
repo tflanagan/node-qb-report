@@ -7,7 +7,7 @@ A lightweight, promise based abstraction layer for Quick Base Reports
 
 Written in TypeScript, targets Nodejs and the Browser
 
-This library targets the new RESTful JSON-based API, not the old XML-based API. If you want to use the old XML-based API, then please use [v2.x](https://github.com/tflanagan/node-qb-table/tree/master/) of the `QBTable` library.
+This library targets the new RESTful JSON-based API, not the old XML-based API. If you want to use the old XML-based API, then please use [v2.x](https://github.com/tflanagan/node-qb-table/tree/v2.x/) of the `QBTable` library.
 
 ```
 IE 11 Users, if you are receiving this error:
@@ -26,8 +26,8 @@ change a security setting:
 Install
 -------
 ```
-# Install alpha channel
-$ npm install qb-report@alpha
+# Install
+$ npm install qb-report
 ```
 
 Documentation
@@ -83,8 +83,6 @@ var qbReport = new QBReport({
 
 // Using a Temporary Token
 quickbase.getTempToken().then(function(results){
-    quickbase.setTempToken(results.temporaryAuthorization);
-
     return qbReport.load();
 }).then(function(results){
     console.log(results.records);
