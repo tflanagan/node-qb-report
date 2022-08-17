@@ -8,10 +8,10 @@ import {
 	QuickBaseResponseRunQuery,
 	QuickBaseResponseField,
 	reportType,
-	QuickBaseGroupBy,
-	QuickBaseSortBy
+	QuickBaseRecord,
+	QuickBaseResponseReport
 } from 'quickbase';
-import { QBField } from 'qb-field';
+import { QBField, QBFieldJSON } from 'qb-field';
 import { QBRecord } from 'qb-record';
 
 /* Globals */
@@ -34,12 +34,12 @@ export class QBReport {
 			realm: IS_BROWSER ? window.location.host.split('.')[0] : ''
 		},
 
-		dbid: (() => {
+		tableId: (() => {
 			if(IS_BROWSER){
-				const dbid = window.location.pathname.match(/^\/db\/(?!main)(.*)$/);
+				const tableId = window.location.pathname.match(/^\/db\/(?!main)(.*)$/);
 
-				if(dbid){
-					return dbid[1];
+				if(tableId){
+					return tableId[1];
 				}
 			}
 
@@ -50,26 +50,34 @@ export class QBReport {
 	};
 
 	private _qb: QuickBase;
-	private _dbid: string = '';
+	private _tableId: string = '';
 	private _fids: QBReportFids = {};
 	private _reportId: number = -1;
 	private _fields: QBField[] = [];
 	private _records: QBRecord[] = [];
-	private _data: any;
+	private _data: Partial<QBReportData> = {};
 
-	constructor(options?: QBReportOptions){
+	constructor(options?: Partial<QBReportOptions>){
 		if(options){
-			if(options.quickbase instanceof QuickBase){
-				this._qb = options.quickbase;
+			const {
+				quickbase,
+				...classOptions
+			} = options || {};
+
+			if(quickbase){
+				// @ts-ignore
+				if(quickbase && quickbase.CLASS_NAME === 'QuickBase'){
+					this._qb = quickbase as QuickBase;
+				}else{
+					this._qb = new QuickBase(quickbase as QuickBaseOptions);
+				}
 			}else{
-				this._qb = new QuickBase(options.quickbase);
+				this._qb = new QuickBase();
 			}
 
-			delete options.quickbase;
+			const settings = merge(QBReport.defaults, classOptions);
 
-			const settings = merge(QBRecord.defaults, options || {});
-
-			this.setDBID(settings.dbid)
+			this.setTableId(settings.tableId)
 				.setFids(settings.fids)
 				.setReportId(settings.reportId);
 		}else{
@@ -79,20 +87,60 @@ export class QBReport {
 		return this;
 	}
 
+	private _buildRecord(record: QuickBaseRecord): QBRecord {
+		const qbRecord = new QBRecord({
+			quickbase: this._qb,
+			tableId: this.getTableId(),
+			fids: this.getFids()
+		});
+		const fields = this.getFields();
+
+		//@ts-ignore
+		qbRecord._fields = fields;
+
+		fields.forEach((field) => {
+			const fid = field.getFid();
+			const name = this.getFid(fid, true);
+			let val;
+
+			if(record[fid]){
+				val = record[fid].value;
+			}
+
+			qbRecord.set(name || fid, val);
+		});
+
+		return qbRecord;
+	}
+
+	clear(): QBReport {
+		this._fields = [];
+		this._records = [];
+		this._data = {};
+
+		return this;
+	}
+
+	get(field: 'tableId'): string;
+	get(field: 'reportId'): number;
+	get(field: string | number): any;
 	get(field: string | number): any {
-		if(!this._data.hasOwnProperty(field)){
-			return null;
+		if(field === 'tableId'){
+			return this.getTableId();
+		}else
+		if(field === 'reportId'){
+			return this.getReportId();
 		}
 
 		return (this._data as Indexable)[field];
 	}
 
-	getDBID(): string {
-		return this._dbid;
+	getTableId(): string {
+		return this._tableId;
 	}
 
-	getFid(field: string, byId?: false): number;
 	getFid(field: number, byId?: true): string;
+	getFid(field: string | number, byId?: false): number;
 	getFid(field: string | number, byId: boolean = false): string | number {
 		const fids = this.getFids();
 		let id: string | number = -1;
@@ -105,7 +153,7 @@ export class QBReport {
 			id = '';
 			field = +field;
 
-			Object.keys(fids).some((name) => {
+			getObjectKeys(fids).some((name) => {
 				if(fids[name] === field){
 					id = name;
 
@@ -139,6 +187,12 @@ export class QBReport {
 
 	getFields(): QBField[] {
 		return this._fields;
+	}
+
+	getFormulaFields(): QBField[] {
+		return this.getFields().filter((field) => {
+			return field.getFid() < 0;
+		});
 	}
 
 	getNRecords(): number {
@@ -187,7 +241,7 @@ export class QBReport {
 		}
 
 		const results = await this._qb.runReport({
-			tableId: this.getDBID(),
+			tableId: this.getTableId(),
 			reportId: this.getReportId(),
 			options: {
 				skip: skip,
@@ -201,7 +255,7 @@ export class QBReport {
 			if(!result){
 				result = new QBField({
 					quickbase: this._qb,
-					dbid: this.getDBID(),
+					tableId: this.getTableId(),
 					fid: field.id
 				});
 
@@ -209,13 +263,11 @@ export class QBReport {
 			}
 
 			getObjectKeys(field).forEach((attribute) => {
-				result!.set(attribute === 'name' ? 'label' : attribute, (field as Indexable)[attribute]);
+				result!.set(attribute, (field as Indexable)[attribute]);
 			});
 		});
 
-		const fields = this.getFields();
-
-		fields.forEach((field) => {
+		this.getFields().forEach((field) => {
 			const fid = field.getFid();
 			const name = this.getFid(fid, true);
 
@@ -224,28 +276,37 @@ export class QBReport {
 			}
 		});
 
+		if(skip === undefined && top === undefined){
+			const nSets = Math.ceil(results.metadata.totalRecords / results.metadata.top);
+
+			for(let i = 1; i < nSets; ++i){
+				const resultSet = await this._qb.runReport({
+					tableId: this.getTableId(),
+					reportId: this.getReportId(),
+					options: {
+						skip: results.metadata.skip + (i * results.metadata.skip),
+						top: results.metadata.top
+					}
+				});
+
+				results.data = results.data.concat(resultSet.data);
+				results.metadata.numRecords += resultSet.metadata.numRecords;
+			}
+
+			if(results.metadata.totalRecords !== results.metadata.numRecords){
+				throw new Error('Race Condition Detected: Total records loaded does not match number of records expected');
+			}
+
+			results.metadata.skip = 0;
+			results.metadata.top = results.metadata.numRecords;
+		}
+
 		this._records = results.data.map((record) => {
-			const qbRecord = new QBRecord({
-				quickbase: this._qb,
-				dbid: this.getDBID(),
-				fids: this.getFids()
-			});
-
-			//@ts-ignore
-			qbRecord._fields = fields;
-
-			fields.forEach((field) => {
-				const fid = field.getFid();
-				const name = this.getFid(fid, true);
-
-				qbRecord.set(name || fid, record[fid].value);
-			});
-
-			return qbRecord;
+			return this._buildRecord(record);
 		});
 
 		return {
-			...results.metadata,
+			metadata: results.metadata,
 			fields: this.getFields(),
 			records: this.getRecords()
 		};
@@ -253,11 +314,9 @@ export class QBReport {
 
 	async loadSchema(): Promise<QBReportData> {
 		const results = await this._qb.getReport({
-			tableId: this.getDBID(),
+			tableId: this.getTableId(),
 			reportId: this.getReportId()
 		});
-
-		delete results.query.tableId;
 
 		results.query.fields.forEach((field) => {
 			let result = this.getField(field);
@@ -265,7 +324,7 @@ export class QBReport {
 			if(!result){
 				result = new QBField({
 					quickbase: this._qb,
-					dbid: this.getDBID(),
+					tableId: this.getTableId(),
 					fid: field
 				});
 
@@ -273,15 +332,13 @@ export class QBReport {
 			}
 		});
 
-		delete results.query.fields;
-
 		results.query.formulaFields.forEach((field) => {
 			let result = this.getField(field.id);
 
 			if(!result){
 				result = new QBField({
 					quickbase: this._qb,
-					dbid: this.getDBID(),
+					tableId: this.getTableId(),
 					fid: field.id
 				});
 
@@ -314,8 +371,6 @@ export class QBReport {
 			});
 		});
 
-		delete results.query.formulaFields;
-
 		this.getFields().forEach((field) => {
 			const fid = field.getFid();
 			const name = this.getFid(fid, true);
@@ -329,15 +384,35 @@ export class QBReport {
 			type: results.type,
 			description: results.description,
 			name: results.name,
-			...results.properties,
-			...results.query
+			query: {
+				...results.query,
+				fields: this.getFields(),
+				formulaFields: this.getFormulaFields()
+			},
+			properties: results.properties
 		};
 
-		return this._data;
+		return this._data as QBReportData;
 	}
 
-	setDBID(dbid: string): QBReport {
-		this._dbid = dbid;
+	set(attribute: 'tableId', value: string): QBReport;
+	set(attribute: 'reportId', value: number): QBReport;
+	set(attribute: string | number, value: any): QBReport;
+	set(attribute: string | number, value: any): QBReport {
+		if(attribute === 'tableId'){
+			return this.setTableId(value);
+		}else
+		if(attribute === 'reportId'){
+			return this.setReportId(value);
+		}
+
+		(this._data as Indexable)[attribute] = value;
+
+		return this;
+	}
+
+	setTableId(tableId: string): QBReport {
+		this._tableId = tableId;
 
 		return this;
 	}
@@ -346,7 +421,7 @@ export class QBReport {
 		if(typeof(id) === 'object'){
 			this._fids[name] = id;
 
-			Object.keys(id).forEach((key, i) => {
+			getObjectKeys(id).forEach((key, i) => {
 				this._fids[('' + name) + (i + 1)] = +id[key];
 			});
 		}else{
@@ -357,7 +432,7 @@ export class QBReport {
 	}
 
 	setFids(fields: QBReportFids): QBReport {
-		Object.keys(fields).forEach((name) => {
+		getObjectKeys(fields).forEach((name) => {
 			this.setFid(name, fields[name]);
 		});
 
@@ -368,6 +443,87 @@ export class QBReport {
 		this._reportId = reportId;
 
 		return this;
+	}
+
+	/**
+	 * Rebuild the QBRecord instance from serialized JSON
+	 *
+	 * @param json QBRecord serialized JSON
+	 */
+	fromJSON(json: string | QBReportJSON): QBReport {
+		if(typeof(json) === 'string'){
+			json = JSON.parse(json);
+		}
+
+		if(typeof(json) !== 'object'){
+			throw new TypeError('json argument must be type of object or a valid JSON string');
+		}
+
+		if(json.quickbase){
+			this._qb = new QuickBase(json.quickbase);
+		}
+
+		if(json.tableId){
+			this.setTableId(json.tableId);
+		}
+
+		if(json.fids){
+			this.setFids(json.fids);
+		}
+
+		if(json.reportId){
+			this.setReportId(json.reportId);
+		}
+
+		if(json.fields){
+			json.fields.forEach((fieldJSON) => {
+				this._fields.push(QBField.fromJSON(fieldJSON));
+			});
+		}
+
+		if(json.data){
+			getObjectKeys(json.data).forEach((name) => {
+				// @ts-ignore
+				this._data[name] = json.data[name];
+			});
+		}
+
+		return this;
+	}
+
+	/**
+	 * Serialize the QBReport instance into JSON
+	 */
+	toJSON(): QBReportJSON {
+		return {
+			quickbase: this._qb.toJSON(),
+			tableId: this.getTableId(),
+			fids: this.getFids(),
+			reportId: this.getReportId(),
+			fields: this.getFields().map((field) => {
+				return field.toJSON();
+			}),
+			data: merge({}, this._data)
+		};
+	}
+
+	/**
+	 * Create a new QBReport instance from serialized JSON
+	 *
+	 * @param json QBReport serialized JSON
+	 */
+	static fromJSON(json: string | QBReportJSON): QBReport {
+		if(typeof(json) === 'string'){
+			json = JSON.parse(json);
+		}
+
+		if(typeof(json) !== 'object'){
+			throw new TypeError('json argument must be type of object or a valid JSON string');
+		}
+
+		const newReport = new QBReport();
+
+		return newReport.fromJSON(json);
 	}
 
 }
@@ -382,11 +538,20 @@ interface Indexable {
 	[index: string]: any;
 }
 
+export interface QBReportJSON {
+	quickbase: QuickBaseOptions;
+	tableId: string;
+	fids: QBReportFids;
+	reportId: number;
+	fields: QBFieldJSON[];
+	data: QBReportData;
+}
+
 export interface QBReportOptions {
-	quickbase?: QuickBase | QuickBaseOptions;
-	dbid?: string;
-	fids?: QBReportFids,
-	reportId?: number;
+	quickbase: QuickBase | QuickBaseOptions;
+	tableId: string;
+	fids: QBReportFids,
+	reportId: number;
 }
 
 export interface QBReportLoad {
@@ -394,19 +559,20 @@ export interface QBReportLoad {
 	top?: number;
 }
 
-export type QBReportResponse = QuickBaseResponseRunQuery['metadata'] & {
+export type QBReportResponse = Pick<QuickBaseResponseRunQuery, 'metadata'> & {
 	records: QBRecord[];
 	fields: QBField[];
 };
 
 export interface QBReportData {
-	type?: reportType;
-	description?: string;
-	name?: string;
-	filter?: string;
-	formulaFields?: QuickBaseResponseField[];
-	groupBy?: QuickBaseGroupBy[];
-	sortBy?: QuickBaseSortBy[];
+	type: reportType;
+	description: string;
+	name: string;
+	query: QuickBaseResponseReport['query'] | {
+		fields: QBField[];
+		formulaFields: QBField[];
+	};
+	properties: QuickBaseResponseReport['properties'];
 }
 
 export type QBReportFids = {

@@ -3,9 +3,9 @@
 /* Dependencies */
 import * as dotenv from 'dotenv';
 import { serial as test } from 'ava';
-import { QuickBase, QuickBaseOptions } from 'quickbase';
+import { QuickBase } from 'quickbase';
 import { QBField } from 'qb-field';
-import { QBRecord, QBRecordOptions } from 'qb-record';
+import { QBRecord } from 'qb-record';
 import { QBReport } from '../qb-report';
 
 /* Tests */
@@ -14,7 +14,7 @@ dotenv.config();
 const QB_REALM = process.env.QB_REALM!;
 const QB_USERTOKEN = process.env.QB_USERTOKEN!;
 
-const qbOptions: QuickBaseOptions = {
+const qb = new QuickBase({
 	server: 'api.quickbase.com',
 	version: 'v1',
 
@@ -29,25 +29,22 @@ const qbOptions: QuickBaseOptions = {
 	errorOnConnectionLimit: false,
 
 	proxy: false
-};
+});
 
-const qb = new QuickBase(qbOptions);
 const qbField = new QBField({
 	quickbase: qb,
-	dbid: '',
+	tableId: '',
 	fid: -1
 });
 
-const qbFieldOptions: QBRecordOptions = {
+const qbRecord = new QBRecord({
 	quickbase: qb
-};
-
-const qbRecord = new QBRecord(qbFieldOptions);
+});
 
 let qbReport: QBReport;
 
 let newAppId: string;
-let newDbid: string;
+let newTableId: string;
 let newFid: number;
 let newRid: number;
 
@@ -57,7 +54,7 @@ test.after.always('deleteRecords()', async (t) => {
 	}
 
 	const results = await qb.deleteRecords({
-		tableId: newDbid,
+		tableId: newTableId,
 		where: `{'3'.EX.'${newRid}'}`
 	});
 
@@ -70,7 +67,7 @@ test.after.always('deleteFields()', async (t) => {
 	}
 
 	const results = await qb.deleteFields({
-		tableId: newDbid,
+		tableId: newTableId,
 		fieldIds: [ newFid ]
 	});
 
@@ -78,16 +75,16 @@ test.after.always('deleteFields()', async (t) => {
 });
 
 test.after.always('deleteTable()', async (t) => {
-	if(!newDbid){
+	if(!newTableId){
 		return t.pass();
 	}
 
 	const results = await qb.deleteTable({
 		appId: newAppId,
-		tableId: newDbid
+		tableId: newTableId
 	});
 
-	t.truthy(results.deletedTableId === newDbid);
+	t.truthy(results.deletedTableId === newTableId);
 });
 
 test.after.always('deleteApp()', async (t) => {
@@ -103,7 +100,7 @@ test.after.always('deleteApp()', async (t) => {
 	t.truthy(results.deletedAppId === newAppId);
 });
 
-test('QuickBase:createApp()', async (t) => {
+test.before('QuickBase:createApp()', async (t) => {
 	const results = await qb.createApp({
 		name: 'Test Node Quick Base Application',
 		assignToken: true
@@ -114,21 +111,21 @@ test('QuickBase:createApp()', async (t) => {
 	t.truthy(newAppId && results.name === 'Test Node Quick Base Application');
 });
 
-test('QuickBase:createTable()', async (t) => {
+test.before('QuickBase:createTable()', async (t) => {
 	const results = await qb.createTable({
 		appId: newAppId,
 		name: 'Test Name'
 	});
 
-	qbField.setDBID(results.id);
-	qbRecord.setDBID(results.id);
+	qbField.setTableId(results.id);
+	qbRecord.setTableId(results.id);
 
-	newDbid = qbRecord.getDBID();
+	newTableId = qbRecord.getTableId();
 
-	t.truthy(qbRecord.getDBID());
+	t.truthy(qbRecord.getTableId());
 });
 
-test('QBField:save() - create', async (t) => {
+test.before('QBField:save() - create', async (t) => {
 	qbField.set('fieldType', 'text');
 	qbField.set('label', 'Test Field');
 
@@ -140,7 +137,7 @@ test('QBField:save() - create', async (t) => {
 	t.truthy(qbField.get('fid') > 0 && qbField.get('label') === 'Test Field' && results.label === 'Test Field');
 });
 
-test('QBRecord:save() - create', async (t) => {
+test.before('QBRecord:save() - create', async (t) => {
 	qbRecord.set('test', 'test value');
 
 	const results = await qbRecord.save();
@@ -150,16 +147,21 @@ test('QBRecord:save() - create', async (t) => {
 	t.truthy(qbRecord.get('recordid') === results.recordid && qbRecord.get('test') === 'test value');
 });
 
-test('loadSchema()', async (t) => {
+test('QuickBase instance match', async (t) => {
 	qbReport = new QBReport({
 		quickbase: qb,
-		dbid: newDbid,
+		tableId: newTableId,
 		reportId: 1,
 		fids: {
 			test: newFid
 		}
 	});
 
+	// @ts-ignore
+	return t.truthy(qb === qbField._qb && qb === qbRecord._qb && qb === qbReport._qb);
+});
+
+test('loadSchema()', async (t) => {
 	const results = await qbReport.loadSchema();
 
 	t.truthy(results.name === qbReport.get('name'));
