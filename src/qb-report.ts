@@ -2,24 +2,31 @@
 
 /* Dependencies */
 import merge from 'deepmerge';
+import RFC4122 from 'rfc4122';
 import {
 	QuickBase,
 	QuickBaseOptions,
-	QuickBaseResponseRunQuery,
-	QuickBaseResponseField,
-	reportType,
-	QuickBaseRecord,
-	QuickBaseResponseReport
+	QuickBaseRequest,
+	QuickBaseRequestRunReport,
+	QuickBaseResponseGetReport,
+	QuickBaseResponseRunQuery
 } from 'quickbase';
 import { QBField, QBFieldJSON } from 'qb-field';
-import { QBRecord } from 'qb-record';
+import { QBFids, QBRecord, QBRecordData } from 'qb-record';
 
 /* Globals */
 const VERSION = require('../package.json').version;
 const IS_BROWSER = typeof(window) !== 'undefined';
+const rfc4122 = new RFC4122();
 
 /* Main Class */
-export class QBReport {
+export class QBReport<
+	RecordData extends QBRecordData = QBRecordData,
+	CustomGetSet extends Object = Record<any, any>
+> {
+
+	public readonly CLASS_NAME = 'QBReport';
+	static readonly CLASS_NAME = 'QBReport';
 
 	/**
 	 * The loaded library version
@@ -46,57 +53,57 @@ export class QBReport {
 			return '';
 		})(),
 		fids: {},
-		reportId: -1
+		reportId: ''
 	};
+
+	/**
+	 * An internal id (guid) used for tracking/managing object instances
+	 */
+	public id: string;
 
 	private _qb: QuickBase;
 	private _tableId: string = '';
-	private _fids: QBReportFids = {};
-	private _reportId: number = -1;
+	private _fids: Record<any, number> = {};
+	private _reportId: string = '';
 	private _fields: QBField[] = [];
-	private _records: QBRecord[] = [];
-	private _data: Partial<QBReportData> = {};
+	private _records: QBRecord<RecordData>[] = [];
+	private _data: Record<any, any> = {};
 
-	constructor(options?: Partial<QBReportOptions>){
-		if(options){
-			const {
-				quickbase,
-				...classOptions
-			} = options || {};
+	constructor(options?: Partial<QBReportOptions<RecordData>>){
+		this.id = rfc4122.v4();
 
-			if(quickbase){
-				// @ts-ignore
-				if(quickbase && quickbase.CLASS_NAME === 'QuickBase'){
-					this._qb = quickbase as QuickBase;
-				}else{
-					this._qb = new QuickBase(quickbase as QuickBaseOptions);
-				}
-			}else{
-				this._qb = new QuickBase();
-			}
+		const {
+			quickbase,
+			...classOptions
+		} = options || {};
 
-			const settings = merge(QBReport.defaults, classOptions);
-
-			this.setTableId(settings.tableId)
-				.setFids(settings.fids)
-				.setReportId(settings.reportId);
+		if(QuickBase.IsQuickBase(quickbase)){
+			this._qb = quickbase;
 		}else{
-			this._qb = new QuickBase();
+			this._qb = new QuickBase(merge.all([
+				QBReport.defaults.quickbase,
+				quickbase || {}
+			]));
 		}
+
+		const settings = merge(QBReport.defaults, classOptions);
+
+		this.setTableId(settings.tableId)
+			.setFids(settings.fids as Record<any, number>)
+			.setReportId(settings.reportId);
 
 		return this;
 	}
 
-	private _buildRecord(record: QuickBaseRecord): QBRecord {
-		const qbRecord = new QBRecord({
+	private _buildRecord(record: Record<string, { value: any }>): QBRecord<RecordData> {
+		const qbRecord = new QBRecord<RecordData>({
 			quickbase: this._qb,
 			tableId: this.getTableId(),
 			fids: this.getFids()
 		});
 		const fields = this.getFields();
 
-		//@ts-ignore
-		qbRecord._fields = fields;
+		qbRecord.setFields(fields);
 
 		fields.forEach((field) => {
 			const fid = field.getFid();
@@ -113,7 +120,7 @@ export class QBReport {
 		return qbRecord;
 	}
 
-	clear(): QBReport {
+	clear(): this {
 		this._fields = [];
 		this._records = [];
 		this._data = {};
@@ -121,24 +128,27 @@ export class QBReport {
 		return this;
 	}
 
-	get(field: 'tableId'): string;
-	get(field: 'reportId'): number;
-	get(field: string | number): any;
-	get(field: string | number): any {
-		if(field === 'tableId'){
+	get<T extends keyof CustomGetSet>(attribute: T): CustomGetSet[T];
+	get<T extends keyof QuickBaseResponseGetReport>(attribute: T): QuickBaseResponseGetReport[T];
+	get(attribute: 'tableId'): string;
+	get(attribute: 'reportId'): string;
+	get<T = any>(attribute: any): T;
+	get(attribute: any): any {
+		if(attribute === 'tableId'){
 			return this.getTableId();
 		}else
-		if(field === 'reportId'){
+		if(attribute === 'reportId'){
 			return this.getReportId();
 		}
 
-		return (this._data as Indexable)[field];
+		return this._data[attribute];
 	}
 
 	getTableId(): string {
 		return this._tableId;
 	}
 
+	getFid<T extends keyof RecordData>(field: T): number;
 	getFid(field: number, byId?: true): string;
 	getFid(field: string | number, byId?: false): number;
 	getFid(field: string | number, byId: boolean = false): string | number {
@@ -153,8 +163,8 @@ export class QBReport {
 			id = '';
 			field = +field;
 
-			getObjectKeys(fids).some((name) => {
-				if(fids[name] === field){
+			Object.entries(fids).some(([ name, fid ]) => {
+				if(fid === field){
 					id = name;
 
 					return true;
@@ -167,18 +177,20 @@ export class QBReport {
 		return id;
 	}
 
-	getFids(): QBReportFids {
-		return this._fids;
+	getFids(): QBFids<RecordData> {
+		return this._fids as QBFids<RecordData>;
 	}
 
-	getField(id: number): QBField | undefined {
+	getField(id: number, returnIndex: true): number | undefined;
+	getField(id: number, returnIndex?: false): QBField | undefined;
+	getField(id: number, returnIndex: boolean = false): number | QBField | undefined {
 		const fields = this.getFields();
 
-		let i = 0, result = undefined;
+		let result = undefined;
 
-		for(; result === undefined && i < fields.length; ++i){
+		for(let i = 0; result === undefined && i < fields.length; ++i){
 			if(fields[i].getFid() === id){
-				result = fields[i];
+				result = returnIndex ? i : fields[i];
 			}
 		}
 
@@ -199,9 +211,11 @@ export class QBReport {
 		return this._records.length;
 	}
 
+	getRecord<T extends keyof RecordData>(value: RecordData[T], fieldName: T, returnIndex: true): number;
+	getRecord<T extends keyof RecordData>(value: RecordData[T], fieldName: T, returnIndex?: false): QBRecord<RecordData> | undefined;
 	getRecord(value: any, fieldName: string | number, returnIndex: true): number;
-	getRecord(value: any, fieldName: string | number, returnIndex: false): QBRecord | undefined;
-	getRecord(value: any, fieldName: string | number, returnIndex: boolean = false): QBRecord | number | undefined {
+	getRecord(value: any, fieldName: string | number, returnIndex: false): QBRecord<RecordData> | undefined;
+	getRecord(value: any, fieldName: string | number = 'recordid', returnIndex: boolean = false): QBRecord<RecordData> | number | undefined {
 		const records = this.getRecords();
 		let i = -1;
 
@@ -225,97 +239,19 @@ export class QBReport {
 		return records[i];
 	}
 
-	getRecords(): QBRecord[] {
+	getRecords(): QBRecord<RecordData>[] {
 		return this._records;
 	}
 
-	getReportId(): number {
+	getReportId(): string {
 		return this._reportId;
 	}
 
-	async load(options?: QBReportLoad): Promise<QBReportResponse>;
-	async load(skip?: number | QBReportLoad, top?: number): Promise<QBReportResponse> {
-		if(typeof(skip) === 'object'){
-			top = skip.top;
-			skip = skip.skip;
-		}
-
-		const results = await this._qb.runReport({
-			tableId: this.getTableId(),
-			reportId: this.getReportId(),
-			options: {
-				skip: skip,
-				top: top
-			}
-		});
-
-		results.fields.forEach((field) => {
-			let result = this.getField(field.id);
-
-			if(!result){
-				result = new QBField({
-					quickbase: this._qb,
-					tableId: this.getTableId(),
-					fid: field.id
-				});
-
-				this._fields.push(result);
-			}
-
-			getObjectKeys(field).forEach((attribute) => {
-				result!.set(attribute, (field as Indexable)[attribute]);
-			});
-		});
-
-		this.getFields().forEach((field) => {
-			const fid = field.getFid();
-			const name = this.getFid(fid, true);
-
-			if(!name){
-				this.setFid(fid, fid);
-			}
-		});
-
-		if(skip === undefined && top === undefined){
-			const nSets = Math.ceil(results.metadata.totalRecords / results.metadata.top);
-
-			for(let i = 1; i < nSets; ++i){
-				const resultSet = await this._qb.runReport({
-					tableId: this.getTableId(),
-					reportId: this.getReportId(),
-					options: {
-						skip: results.metadata.skip + (i * results.metadata.skip),
-						top: results.metadata.top
-					}
-				});
-
-				results.data = results.data.concat(resultSet.data);
-				results.metadata.numRecords += resultSet.metadata.numRecords;
-			}
-
-			if(results.metadata.totalRecords !== results.metadata.numRecords){
-				throw new Error('Race Condition Detected: Total records loaded does not match number of records expected');
-			}
-
-			results.metadata.skip = 0;
-			results.metadata.top = results.metadata.numRecords;
-		}
-
-		this._records = results.data.map((record) => {
-			return this._buildRecord(record);
-		});
-
-		return {
-			metadata: results.metadata,
-			fields: this.getFields(),
-			records: this.getRecords()
-		};
-	}
-
-	async loadSchema(): Promise<QBReportData> {
+	async load({ requestOptions }: QuickBaseRequest = {}): Promise<QuickBaseResponseGetReport> {
 		const results = await this._qb.getReport({
 			tableId: this.getTableId(),
-			reportId: this.getReportId()
+			reportId: this.getReportId(),
+			requestOptions
 		});
 
 		results.query.fields.forEach((field) => {
@@ -345,29 +281,8 @@ export class QBReport {
 				this._fields.push(result);
 			}
 
-			getObjectKeys(field).forEach((attribute) => {
-				let value = (field as Indexable)[attribute];
-
-				if(attribute === 'formula'){
-					// @ts-ignore
-					attribute = 'properties';
-
-					value = {
-						formula: value,
-						...(result!.get('properties') || {})
-					};
-				}else
-				if(attribute === 'decimalPrecision'){
-					// @ts-ignore
-					attribute = 'properties';
-
-					value = {
-						decimalPrecision: value,
-						...(result!.get('properties') || {})
-					};
-				}
-
-				result!.set(attribute as keyof QuickBaseResponseField, value);
+			Object.entries(field).forEach(([ attribute, value ]) => {
+				result!.set(attribute, value);
 			});
 		});
 
@@ -392,13 +307,86 @@ export class QBReport {
 			properties: results.properties
 		};
 
-		return this._data as QBReportData;
+		return this._data as QuickBaseResponseGetReport;
 	}
 
-	set(attribute: 'tableId', value: string): QBReport;
-	set(attribute: 'reportId', value: number): QBReport;
-	set(attribute: string | number, value: any): QBReport;
-	set(attribute: string | number, value: any): QBReport {
+	async run({ skip, top, requestOptions }: QBReportRunRequest = {}): Promise<QBReportRunResponse<RecordData>>{
+		const results = await this._qb.runReport({
+			tableId: this.getTableId(),
+			reportId: this.getReportId(),
+			skip: skip,
+			top: top,
+			requestOptions
+		});
+
+		results.fields.forEach((field) => {
+			let result = this.getField(field.id);
+
+			if(!result){
+				result = new QBField({
+					quickbase: this._qb,
+					tableId: this.getTableId(),
+					fid: field.id
+				});
+
+				this._fields.push(result);
+			}
+
+			Object.entries(field).forEach(([ attribute, value ]) => {
+				result!.set(attribute, value);
+			});
+		});
+
+		this.getFields().forEach((field) => {
+			const fid = field.getFid();
+			const name = this.getFid(fid, true);
+
+			if(!name){
+				this.setFid(fid, fid);
+			}
+		});
+
+		if(skip === undefined && top === undefined){
+			const nSets = Math.ceil(results.metadata.totalRecords / (results.metadata.top || 1));
+
+			for(let i = 1; i < nSets; ++i){
+				const resultSet = await this._qb.runReport({
+					tableId: this.getTableId(),
+					reportId: this.getReportId(),
+					skip: (results.metadata.skip || 0) + (i * (results.metadata.skip || 0)),
+					top: results.metadata.top || 1,
+					requestOptions
+				});
+
+				results.data = results.data.concat(resultSet.data);
+				results.metadata.numRecords += resultSet.metadata.numRecords;
+			}
+
+			if(results.metadata.totalRecords !== results.metadata.numRecords){
+				throw new Error('Race Condition Detected: Total records loaded does not match number of records expected');
+			}
+
+			results.metadata.skip = 0;
+			results.metadata.top = results.metadata.numRecords;
+		}
+
+		this._records = results.data.map((record) => {
+			return this._buildRecord(record);
+		});
+
+		return {
+			metadata: results.metadata,
+			fields: this.getFields(),
+			records: this.getRecords()
+		};
+	}
+
+	set<T extends keyof CustomGetSet>(attribute: T, value: CustomGetSet[T]): this;
+	set<T extends keyof QuickBaseResponseGetReport>(attribute: T, value: QuickBaseResponseGetReport[T]): this;
+	set(attribute: 'tableId', value: string): this;
+	set(attribute: 'reportId', value: number): this;
+	set(attribute: string | number, value: any): this;
+	set(attribute: string | number, value: any): this {
 		if(attribute === 'tableId'){
 			return this.setTableId(value);
 		}else
@@ -406,40 +394,34 @@ export class QBReport {
 			return this.setReportId(value);
 		}
 
-		(this._data as Indexable)[attribute] = value;
+		this._data[attribute] = value;
 
 		return this;
 	}
 
-	setTableId(tableId: string): QBReport {
+	setTableId(tableId: string): this {
 		this._tableId = tableId;
 
 		return this;
 	}
 
-	setFid(name: string | number, id: number): QBReport {
-		if(typeof(id) === 'object'){
-			this._fids[name] = id;
-
-			getObjectKeys(id).forEach((key, i) => {
-				this._fids[('' + name) + (i + 1)] = +id[key];
-			});
-		}else{
-			this._fids[name] = +id;
-		}
+	setFid<T extends keyof RecordData>(name: T, id: number): this;
+	setFid(name: string | number, id: number): this;
+	setFid(name: string | number, fid: number): this {
+		this._fids[name] = fid;
 
 		return this;
 	}
 
-	setFids(fields: QBReportFids): QBReport {
-		getObjectKeys(fields).forEach((name) => {
-			this.setFid(name, fields[name]);
+	setFids(fields: Record<any, number>): this {
+		Object.entries(fields).forEach(([ name, fid ]) => {
+			this.setFid(name, fid);
 		});
 
 		return this;
 	}
 
-	setReportId(reportId: number): QBReport {
+	setReportId(reportId: string): this {
 		this._reportId = reportId;
 
 		return this;
@@ -450,7 +432,7 @@ export class QBReport {
 	 *
 	 * @param json QBRecord serialized JSON
 	 */
-	fromJSON(json: string | QBReportJSON): QBReport {
+	fromJSON(json: string | QBReportJSON): this {
 		if(typeof(json) === 'string'){
 			json = JSON.parse(json);
 		}
@@ -482,9 +464,8 @@ export class QBReport {
 		}
 
 		if(json.data){
-			getObjectKeys(json.data).forEach((name) => {
-				// @ts-ignore
-				this._data[name] = json.data[name];
+			Object.entries(json.data).forEach(([ name, value ]) => {
+				this.set(name, value);
 			});
 		}
 
@@ -526,62 +507,43 @@ export class QBReport {
 		return newReport.fromJSON(json);
 	}
 
-}
+	/**
+	 * Test if a variable is a `qb-report` object
+	 * 
+	 * @param obj A variable you'd like to test
+	 */
+	static IsQBReport(obj: any): obj is QBReport {
+		return ((obj || {}) as QBReport).CLASS_NAME === QBReport.CLASS_NAME;
+	}
 
-/* Helpers */
-function getObjectKeys<O>(obj: O): (keyof O)[] {
-    return Object.keys(obj) as (keyof O)[];
 }
 
 /* Interfaces */
-interface Indexable {
-	[index: string]: any;
-}
-
-export interface QBReportJSON {
+export type QBReportJSON = {
 	quickbase: QuickBaseOptions;
 	tableId: string;
-	fids: QBReportFids;
-	reportId: number;
+	fids: Record<any, number>;
+	reportId: string;
 	fields: QBFieldJSON[];
-	data: QBReportData;
+	data: Partial<QuickBaseResponseGetReport> & Record<any, any>;
 }
 
-export interface QBReportOptions {
+export type QBReportOptions<RecordData extends QBRecordData = {}> = {
 	quickbase: QuickBase | QuickBaseOptions;
 	tableId: string;
-	fids: QBReportFids,
-	reportId: number;
+	fids: Partial<QBFids<RecordData>>,
+	reportId: string;
 }
 
-export interface QBReportLoad {
-	skip?: number;
-	top?: number;
-}
-
-export type QBReportResponse = Pick<QuickBaseResponseRunQuery, 'metadata'> & {
-	records: QBRecord[];
+export type QBReportRunResponse<RecordData extends QBRecordData = {}> = Pick<QuickBaseResponseRunQuery, 'metadata'> & {
+	records: QBRecord<RecordData>[];
 	fields: QBField[];
 };
 
-export interface QBReportData {
-	type: reportType;
-	description: string;
-	name: string;
-	query: QuickBaseResponseReport['query'] | {
-		fields: QBField[];
-		formulaFields: QBField[];
-	};
-	properties: QuickBaseResponseReport['properties'];
-}
-
-export type QBReportFids = {
-	[index in string | number]: number;
-}
+export type QBReportRunRequest = Pick<QuickBaseRequestRunReport, 'top' | 'skip'> & QuickBaseRequest;
 
 /* Export to Browser */
 if(IS_BROWSER){
-	// @ts-ignore
-	window.QBRecord = QBRecord;
+	window.QBReport = QBReport;
 }
 

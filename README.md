@@ -82,7 +82,9 @@ var qbReport = new QBReport({
 });
 
 // Using a Temporary Token
-quickbase.getTempToken().then(function(results){
+quickbase.getTempTokenDBID({
+    dbid: 'xxxxxxxxx'
+}).then(function(results){
     return qbReport.load();
 }).then(function(results){
     console.log(results.records);

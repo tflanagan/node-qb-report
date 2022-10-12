@@ -2,7 +2,7 @@
 
 /* Dependencies */
 import * as dotenv from 'dotenv';
-import { serial as test } from 'ava';
+import ava from 'ava';
 import { QuickBase } from 'quickbase';
 import { QBField } from 'qb-field';
 import { QBRecord } from 'qb-record';
@@ -48,7 +48,7 @@ let newTableId: string;
 let newFid: number;
 let newRid: number;
 
-test.after.always('deleteRecords()', async (t) => {
+ava.serial.after.always('deleteRecords()', async (t) => {
 	if(!newRid){
 		return t.pass();
 	}
@@ -58,10 +58,10 @@ test.after.always('deleteRecords()', async (t) => {
 		where: `{'3'.EX.'${newRid}'}`
 	});
 
-	t.truthy(results.numberDeleted);
+	return t.truthy(results.numberDeleted);
 });
 
-test.after.always('deleteFields()', async (t) => {
+ava.serial.after.always('deleteFields()', async (t) => {
 	if(!newFid){
 		return t.pass();
 	}
@@ -71,10 +71,10 @@ test.after.always('deleteFields()', async (t) => {
 		fieldIds: [ newFid ]
 	});
 
-	t.truthy(results.deletedFieldIds[0] === newFid);
+	return t.truthy(results.deletedFieldIds[0] === newFid);
 });
 
-test.after.always('deleteTable()', async (t) => {
+ava.serial.after.always('deleteTable()', async (t) => {
 	if(!newTableId){
 		return t.pass();
 	}
@@ -84,10 +84,10 @@ test.after.always('deleteTable()', async (t) => {
 		tableId: newTableId
 	});
 
-	t.truthy(results.deletedTableId === newTableId);
+	return t.truthy(results.deletedTableId === newTableId);
 });
 
-test.after.always('deleteApp()', async (t) => {
+ava.serial.after.always('deleteApp()', async (t) => {
 	if(!newAppId){
 		return t.pass();
 	}
@@ -97,10 +97,10 @@ test.after.always('deleteApp()', async (t) => {
 		name: 'Test Node Quick Base Application'
 	});
 
-	t.truthy(results.deletedAppId === newAppId);
+	return t.truthy(results.deletedAppId === newAppId);
 });
 
-test.before('QuickBase:createApp()', async (t) => {
+ava.serial.before('QuickBase:createApp()', async (t) => {
 	const results = await qb.createApp({
 		name: 'Test Node Quick Base Application',
 		assignToken: true
@@ -108,10 +108,10 @@ test.before('QuickBase:createApp()', async (t) => {
 
 	newAppId = results.id;
 
-	t.truthy(newAppId && results.name === 'Test Node Quick Base Application');
+	return t.truthy(newAppId && results.name === 'Test Node Quick Base Application');
 });
 
-test.before('QuickBase:createTable()', async (t) => {
+ava.serial.before('QuickBase:createTable()', async (t) => {
 	const results = await qb.createTable({
 		appId: newAppId,
 		name: 'Test Name'
@@ -122,10 +122,10 @@ test.before('QuickBase:createTable()', async (t) => {
 
 	newTableId = qbRecord.getTableId();
 
-	t.truthy(qbRecord.getTableId());
+	return t.truthy(qbRecord.getTableId());
 });
 
-test.before('QBField:save() - create', async (t) => {
+ava.serial.before('QBField:save() - create', async (t) => {
 	qbField.set('fieldType', 'text');
 	qbField.set('label', 'Test Field');
 
@@ -134,24 +134,24 @@ test.before('QBField:save() - create', async (t) => {
 	newFid = qbField.get('fid');
 	qbRecord.setFid('test', newFid);
 
-	t.truthy(qbField.get('fid') > 0 && qbField.get('label') === 'Test Field' && results.label === 'Test Field');
+	return t.truthy(qbField.get('fid') > 0 && qbField.get('label') === 'Test Field' && results.label === 'Test Field');
 });
 
-test.before('QBRecord:save() - create', async (t) => {
+ava.serial.before('QBRecord:save() - create', async (t) => {
 	qbRecord.set('test', 'test value');
 
 	const results = await qbRecord.save();
 
 	newRid = qbRecord.get('recordid');
 
-	t.truthy(qbRecord.get('recordid') === results.recordid && qbRecord.get('test') === 'test value');
+	return t.truthy(qbRecord.get('recordid') === results.recordid && qbRecord.get('test') === 'test value');
 });
 
-test('QuickBase instance match', async (t) => {
+ava.serial('QuickBase instance match', async (t) => {
 	qbReport = new QBReport({
 		quickbase: qb,
 		tableId: newTableId,
-		reportId: 1,
+		reportId: '1',
 		fids: {
 			test: newFid
 		}
@@ -161,14 +161,14 @@ test('QuickBase instance match', async (t) => {
 	return t.truthy(qb === qbField._qb && qb === qbRecord._qb && qb === qbReport._qb);
 });
 
-test('loadSchema()', async (t) => {
-	const results = await qbReport.loadSchema();
-
-	t.truthy(results.name === qbReport.get('name'));
-});
-
-test('load()', async (t) => {
+ava.serial('load()', async (t) => {
 	const results = await qbReport.load();
 
-	t.truthy(results.records[0].get('test') === 'test value');
+	return t.truthy(results.name === qbReport.get('name'));
+});
+
+ava.serial('run()', async (t) => {
+	const results = await qbReport.run();
+
+	return t.truthy(results.records[0].get('test') === 'test value');
 });
