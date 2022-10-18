@@ -41,7 +41,9 @@ const qbRecord = new QBRecord({
 	quickbase: qb
 });
 
-let qbReport: QBReport;
+let qbReport: QBReport<{
+	test: string
+}>;
 
 let newAppId: string;
 let newTableId: string;
@@ -148,7 +150,9 @@ ava.serial.before('QBRecord:save() - create', async (t) => {
 });
 
 ava.serial('QuickBase instance match', async (t) => {
-	qbReport = new QBReport({
+	qbReport = new QBReport<{
+		test: string
+	}>({
 		quickbase: qb,
 		tableId: newTableId,
 		reportId: '1',

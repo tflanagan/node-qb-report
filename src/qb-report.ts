@@ -114,7 +114,7 @@ export class QBReport<
 				val = record[fid].value;
 			}
 
-			qbRecord.set(name || fid, val);
+			qbRecord.set('' + (name || fid), val);
 		});
 
 		return qbRecord;
@@ -128,11 +128,9 @@ export class QBReport<
 		return this;
 	}
 
-	get<T extends keyof CustomGetSet>(attribute: T): CustomGetSet[T];
-	get<T extends keyof QuickBaseResponseGetReport>(attribute: T): QuickBaseResponseGetReport[T];
+	get<P extends string>(attribute: P): P extends keyof QuickBaseResponseGetReport ? QuickBaseResponseGetReport[P] : (P extends keyof CustomGetSet ? CustomGetSet[P] : any);
 	get(attribute: 'tableId'): string;
 	get(attribute: 'reportId'): string;
-	get<T = any>(attribute: any): T;
 	get(attribute: any): any {
 		if(attribute === 'tableId'){
 			return this.getTableId();
@@ -213,9 +211,9 @@ export class QBReport<
 
 	getRecord<T extends keyof RecordData>(value: RecordData[T], fieldName: T, returnIndex: true): number;
 	getRecord<T extends keyof RecordData>(value: RecordData[T], fieldName: T, returnIndex?: false): QBRecord<RecordData> | undefined;
-	getRecord(value: any, fieldName: string | number, returnIndex: true): number;
-	getRecord(value: any, fieldName: string | number, returnIndex: false): QBRecord<RecordData> | undefined;
-	getRecord(value: any, fieldName: string | number = 'recordid', returnIndex: boolean = false): QBRecord<RecordData> | number | undefined {
+	getRecord(value: any, fieldName: string, returnIndex: true): number;
+	getRecord(value: any, fieldName: string, returnIndex: false): QBRecord<RecordData> | undefined;
+	getRecord(value: any, fieldName: string = 'recordid', returnIndex: boolean = false): QBRecord<RecordData> | number | undefined {
 		const records = this.getRecords();
 		let i = -1;
 
@@ -381,11 +379,9 @@ export class QBReport<
 		};
 	}
 
-	set<T extends keyof CustomGetSet>(attribute: T, value: CustomGetSet[T]): this;
-	set<T extends keyof QuickBaseResponseGetReport>(attribute: T, value: QuickBaseResponseGetReport[T]): this;
+	set<P extends string>(attribute: P, value: P extends keyof QuickBaseResponseGetReport ? QuickBaseResponseGetReport[P] : (P extends keyof CustomGetSet ? CustomGetSet[P] : any)): this;
 	set(attribute: 'tableId', value: string): this;
 	set(attribute: 'reportId', value: number): this;
-	set(attribute: string | number, value: any): this;
 	set(attribute: string | number, value: any): this {
 		if(attribute === 'tableId'){
 			return this.setTableId(value);
