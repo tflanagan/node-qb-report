@@ -508,7 +508,7 @@ export class QBReport<
 	 * 
 	 * @param obj A variable you'd like to test
 	 */
-	static IsQBReport(obj: any): obj is QBReport {
+	static IsQBReport<T extends QBRecordData = QBRecordData, K extends Object = Record<any, any>>(obj: any): obj is QBReport<T, K> {
 		return ((obj || {}) as QBReport).CLASS_NAME === QBReport.CLASS_NAME;
 	}
 
