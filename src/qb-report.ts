@@ -540,6 +540,6 @@ export type QBReportRunRequest = Pick<QuickBaseRequestRunReport, 'top' | 'skip'>
 
 /* Export to Browser */
 if(IS_BROWSER){
-	window.QBReport = QBReport;
+	window.QBReport = exports;
 }
 
