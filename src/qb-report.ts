@@ -128,9 +128,11 @@ export class QBReport<
 		return this;
 	}
 
-	get<P extends string>(attribute: P): P extends keyof QuickBaseResponseGetReport ? QuickBaseResponseGetReport[P] : (P extends keyof CustomGetSet ? CustomGetSet[P] : any);
 	get(attribute: 'tableId'): string;
 	get(attribute: 'reportId'): string;
+	get<P extends keyof QuickBaseResponseGetReport>(attribute: P): QuickBaseResponseGetReport[P];
+	get<P extends keyof CustomGetSet>(attribute: P): CustomGetSet[P];
+	get<P extends string>(attribute: P): P extends keyof QuickBaseResponseGetReport ? QuickBaseResponseGetReport[P] : (P extends keyof CustomGetSet ? CustomGetSet[P] : any);
 	get(attribute: any): any {
 		if(attribute === 'tableId'){
 			return this.getTableId();
@@ -379,9 +381,11 @@ export class QBReport<
 		};
 	}
 
-	set<P extends string>(attribute: P, value: P extends keyof QuickBaseResponseGetReport ? QuickBaseResponseGetReport[P] : (P extends keyof CustomGetSet ? CustomGetSet[P] : any)): this;
 	set(attribute: 'tableId', value: string): this;
 	set(attribute: 'reportId', value: number): this;
+	set<P extends keyof QuickBaseResponseGetReport>(attribute: P, value: QuickBaseResponseGetReport[P]): this;
+	set<P extends keyof CustomGetSet>(attribute: P, value: CustomGetSet[P]): this;
+	set<P extends string>(attribute: P, value: P extends keyof QuickBaseResponseGetReport ? QuickBaseResponseGetReport[P] : (P extends keyof CustomGetSet ? CustomGetSet[P] : any)): this;
 	set(attribute: string | number, value: any): this {
 		if(attribute === 'tableId'){
 			return this.setTableId(value);
