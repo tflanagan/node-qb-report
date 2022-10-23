@@ -144,10 +144,6 @@ export class QBReport<
 		return this._data[attribute];
 	}
 
-	getTableId(): string {
-		return this._tableId;
-	}
-
 	getFid<T extends keyof RecordData>(field: T): number;
 	getFid(field: number, byId?: true): string;
 	getFid(field: string | number, byId?: false): number;
@@ -245,6 +241,17 @@ export class QBReport<
 
 	getReportId(): string {
 		return this._reportId;
+	}
+
+	getTableId(): string {
+		return this._tableId;
+	}
+
+	async getTempToken({ requestOptions }: QuickBaseRequest): Promise<void> {
+		this._qb.getTempTokenDBID({
+			dbid: this.getTableId(),
+			requestOptions
+		});
 	}
 
 	async load({ requestOptions }: QuickBaseRequest = {}): Promise<QuickBaseResponseGetReport> {
